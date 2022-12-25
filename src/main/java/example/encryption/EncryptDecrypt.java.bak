@@ -1,0 +1,306 @@
+/*
+ * Copyright 2017-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+ * the License. A copy of the License is located at
+ *
+ *     http://aws.amazon.com/apache2.0/
+ *
+ * or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+ * CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
+ * and limitations under the License.
+ */
+
+
+package example.encryption;
+//import aws.example.kms;
+
+import static example.Utils.MAPPER;
+
+import javax.inject.Inject;
+import javax.inject.Named;
+import javax.inject.Singleton;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.io.File; //add by bob for fixed content encryption;
+import com.fasterxml.jackson.databind.ObjectMapper; //add by bob for fixed content encryption;
+import java.nio.charset.Charset;
+
+import java.io.UnsupportedEncodingException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Scanner;
+// import sun.misc.BASE64Decoder;
+// import sun.misc.BASE64Encoder;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+
+
+import java.security.InvalidAlgorithmParameterException;
+import java.security.Key;
+import com.amazonaws.auth.ClasspathPropertiesFileCredentialsProvider;
+
+import org.apache.log4j.Logger;
+
+import com.amazonaws.encryptionsdk.MasterKeyProvider;
+import com.amazonaws.encryptionsdk.multi.MultipleProviderFactory;
+import com.amazonaws.encryptionsdk.AwsCrypto;
+import com.amazonaws.encryptionsdk.CryptoResult;
+import com.amazonaws.encryptionsdk.kms.KmsMasterKey;
+import com.amazonaws.encryptionsdk.kms.KmsMasterKeyProvider;
+import com.amazonaws.services.kms.AWSKMS;
+import com.amazonaws.services.kms.AWSKMSClient;
+import com.amazonaws.services.kms.model.DecryptRequest;
+import com.amazonaws.services.kms.model.DecryptResult;
+import com.amazonaws.services.kms.model.EncryptRequest;
+import com.amazonaws.services.kms.model.EncryptResult;
+import com.amazonaws.services.kms.AWSKMSClientBuilder;
+import com.amazonaws.services.kms.model.GenerateDataKeyRequest;
+import com.amazonaws.services.kms.model.GenerateDataKeyResult;
+import com.fasterxml.jackson.databind.JsonNode;
+
+/**
+ * This class centralizes the logic for encryption and decryption of messages, to allow for easier modification.
+ *
+ * The guice wiring will ensure that this is a singleton; any fields initialized in the constructor will be retained
+ * for subsequent invocations and/or messages.
+ */
+@Singleton
+public class EncryptDecrypt {
+    private static final Logger LOGGER = Logger.getLogger(EncryptDecrypt.class);
+    private static final String K_MESSAGE_TYPE = "message type";
+    private static final String TYPE_ORDER_INQUIRY = "order inquiry";
+    private static final String K_ORDER_ID = "order ID";
+    private static final String KEYID = "arn:aws:kms:us-east-2:484626021127:key/1f154dd3-1d7c-4ee0-aa29-01cf206e1a99";
+    
+    private static ByteBuffer cypherDataKey_A;
+    private static ByteBuffer cypherDataKey_P;
+    private static ByteBuffer plainDataKey;
+    private static String cypherText_;
+
+    private final AWSKMS kms;
+    //private final KmsMasterKey masterKey;
+    private final KmsMasterKey masterKeyEast;
+    private final KmsMasterKey masterKeyWest;
+    private final MasterKeyProvider<?> provider;
+    private String CMKKeyID;
+    
+    
+    @SuppressWarnings("unused") // all fields are used via JSON deserialization
+    private static class FormData {
+        public String name;
+        public String email;
+        public String orderid;
+        public String issue;
+    }
+
+    @Inject
+    public EncryptDecrypt(@Named("keyIdEast") final String keyIdEast, @Named("keyIdWest") final String keyIdWest) {
+        kms = AWSKMSClient.builder().build();
+        this.masterKeyEast = new KmsMasterKeyProvider(keyIdEast).getMasterKey(keyIdEast);
+        this.masterKeyWest = new KmsMasterKeyProvider(keyIdWest).getMasterKey(keyIdWest);
+        this.provider = getKeyProvider(masterKeyEast, masterKeyWest);
+        this.CMKKeyID = keyIdEast;
+    }
+
+    private static final ObjectMapper mapper = new ObjectMapper(); //add by bob for fixed content encryption;
+
+    public String encrypt(JsonNode data) throws Exception {
+		try {
+            String carJson =    "{ \"brand\" : \"Mercedes\", \"doors\" : 5 }";
+            // JsonNode root = mapper.readTree(new File("/home/ec2-user/environment/data.json")); //add by bob for fixed content encryption;
+            // FormData formValues = MAPPER.treeToValue(root, FormData.class);
+        
+            // FormData formValues = MAPPER.treeToValue(data, FormData.class);
+            
+            // We can access specific form fields using values in the parsed FormData object.
+            // LOGGER.info("Got form submission for order " + formValues.orderid);
+    
+            // byte[] plaintext = MAPPER.writeValueAsBytes(formValues);
+            byte[] plaintext = carJson.getBytes("UTF-8");
+    
+            HashMap<String, String> context = new HashMap<>();
+            context.put(K_MESSAGE_TYPE, TYPE_ORDER_INQUIRY);
+            // if (formValues.orderid != null && formValues.orderid.length() > 0) {
+            //     context.put(K_ORDER_ID, formValues.orderid);
+            // }
+            
+            /*
+            *   new update 1001，refer to https://github.com/uzresk/aws-examples/blob/master/src/main/java/jp/gr/java_conf/uzresk/aws/kms/simple/KmsExample.java
+            */
+    		final String dataStr = "abcdefghijk";
+    
+    		// get data key
+    // 		AWSKMSClient kmsClient = new AWSKMSClient(
+    // 				new ClasspathPropertiesFileCredentialsProvider());
+    // 		kmsClient.setEndpoint("https://kms.us-east-2.amazonaws.com");
+    		GenerateDataKeyRequest dataKeyRequest = new GenerateDataKeyRequest();
+    		//dataKeyRequest.setKeyId(KEYID);
+    		dataKeyRequest.setKeyId(this.CMKKeyID);
+    		dataKeyRequest.setKeySpec("AES_128");
+    		GenerateDataKeyResult dataKeyResult = kms.generateDataKey(dataKeyRequest);
+    
+    		// data key
+    		ByteBuffer plainTextKey = dataKeyResult.getPlaintext();
+            LOGGER.info("encrypt: generateDataKey the plantextKey " + plainTextKey.array());
+    
+    		// encrypt and base64
+
+		    String encryptStr = encrypt(carJson, makeKey(plainTextKey));
+            LOGGER.info("encrypted[" + encryptStr + "]" + encryptStr.length());
+		    //plainTextKey.clear();
+
+    		// /////////////////////////////////////////////////////////////////////
+    
+    		// decrypt data
+    		ByteBuffer encryptedKey = dataKeyResult.getCiphertextBlob();
+    		this.cypherDataKey_A = encryptedKey.duplicate();// for global variable
+    		LOGGER.info(" cypherDataKey_A[" + this.cypherDataKey_A.array() + "]");
+    
+    		DecryptRequest decryptRequest = new DecryptRequest()
+    				.withCiphertextBlob(encryptedKey);
+    				
+    // 		plainTextKey = kms.decrypt(decryptRequest).getPlaintext();// get plain text key from encryptedKey, to be replaced with provider.
+    // 		LOGGER.info("decrypted plainTextKey[" + plainTextKey.array() + "]");
+    //         String decryptStr = decrypt(encryptStr, makeKey(plainTextKey));
+    //         LOGGER.info("decrypted[" + decryptStr + "]");
+    //         //this.cypherText_ = decryptStr;
+
+            /* end of 1001
+             *---------------------------------------------------
+             */
+            
+            // 使用multiple provider 加密管理 datakey，以便跨区域使用，102 begin    
+            LOGGER.info("plainTextKey before Provider:plainTextKey.array():" + plainTextKey.array());
+            LOGGER.info("plainTextKey before Provider:getByteArray(plainTextKey):" + getByteArray(plainTextKey));
+            byte[] plaintextKey_input = getByteArray(plainTextKey);
+            LOGGER.info("plaintextKey_input:" + plaintextKey_input);
+            CryptoResult<byte[], ?> result = new AwsCrypto().encryptData(this.provider, plainTextKey.array());
+            
+            // byte[] plaintextb = new byte[result.getPlaintext().remaining()];
+            // result.getPlaintext().get(plaintextb);
+            
+            LOGGER.info("Got the result of cypherkey by provider:result.getResult():" + result.getResult());
+            //LOGGER.info("Got the result of cypherkey by provider:plaintextb:" + plaintextb);
+            this.cypherDataKey_P = ByteBuffer.wrap(result.getResult()); 
+            LOGGER.info("Got the cypherDataKey_P:" + this.cypherDataKey_P.array());
+            //LOGGER.info("Got the base64 cypherDataKey by Provider:" + Base64.getEncoder().encodeToString(this.cypherDataKey_P.array()));
+            return encryptStr;
+
+		} catch(Exception e) {
+		   e.printStackTrace();
+		} 
+        // end of 102
+ 
+        //LOGGER.info("return base64 encoded is " + ciphertext);
+        return null;
+    }
+
+    public JsonNode decrypt(String ciphertext) throws Exception {
+//        byte[] ciphertextBytes = Base64.getDecoder().decode(ciphertext);
+        LOGGER.info("decrypt: Got the ciphertext input is: " + ciphertext);
+        //CryptoResult<byte[], ?> result = new AwsCrypto().decryptData(provider, ciphertextBytes);
+        
+        DecryptRequest decryptRequest = new DecryptRequest().withCiphertextBlob(this.cypherDataKey_A);
+    	ByteBuffer plainTextKey_A = kms.decrypt(decryptRequest).getPlaintext();
+    	LOGGER.info("decrypted plainTextKey_A[" + plainTextKey_A.array() + "]");
+        
+        // get the datakey with Provider
+        byte[] cyperDataKey_P = getByteArray(this.cypherDataKey_P);
+        CryptoResult<byte[], ?> result = new AwsCrypto().decryptData(this.provider, cyperDataKey_P);
+        LOGGER.info("decrypt: cypherDataKey before decryptData " + cyperDataKey_P);
+        LOGGER.info("decrypt: Got the plantextKey with decryptData " + result.getResult());
+
+        // Check that we have the correct type
+        // if (!Objects.equals(result.getEncryptionContext().get(K_MESSAGE_TYPE), TYPE_ORDER_INQUIRY)) {
+        //     throw new IllegalArgumentException("Bad message type in decrypted message");
+        // }
+
+        //start to decrypt 
+        LOGGER.info("decrypt: ciphertext before decode " + ciphertext);
+
+    	ByteBuffer plainTextKey_P = ByteBuffer.wrap(result.getResult()); 
+    	// refer: ByteBuffer buf = ByteBuffer.wrap(bytes);
+    	LOGGER.info("decrypted plainTextKey_P[" + plainTextKey_P.array() + "]");
+        String decryptStr_P = decrypt(ciphertext, makeKey(plainTextKey_P));
+        LOGGER.info("decryptStr_P[" + decryptStr_P + "]");
+        String decryptStr_A = decrypt(ciphertext, makeKey(plainTextKey_A));
+        LOGGER.info("decryptStr_A[" + decryptStr_A + "]");
+       
+        return MAPPER.readTree(decryptStr_A.getBytes());
+        
+    }
+    
+    private static MasterKeyProvider<?> getKeyProvider(KmsMasterKey masterKeyEast, KmsMasterKey masterKeyWest) {
+         return MultipleProviderFactory.buildMultiProvider(masterKeyWest, masterKeyEast);
+    }
+
+	public static String encrypt(String src, Key key)
+			throws NoSuchAlgorithmException, NoSuchPaddingException,
+			InvalidKeyException, IllegalBlockSizeException,
+			BadPaddingException, InvalidAlgorithmParameterException {
+        try {
+    		Cipher cipher = Cipher.getInstance("AES");
+    		cipher.init(Cipher.ENCRYPT_MODE, key);
+    
+    		byte[] enc = cipher.doFinal(src.getBytes());
+    
+    		return Base64.getEncoder().encodeToString(enc);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+	}
+
+	public static String decrypt(String src, Key key)
+			throws NoSuchAlgorithmException, NoSuchPaddingException,
+			InvalidKeyException, IllegalBlockSizeException,
+			BadPaddingException, InvalidAlgorithmParameterException {
+
+		try {
+		    
+    		byte[] decodeBase64src = Base64.getDecoder().decode(src);
+    		System.out.println(new String(decodeBase64src));
+    
+    		Cipher cipher = Cipher.getInstance("AES");
+    
+    		cipher.init(Cipher.DECRYPT_MODE, key);
+    		System.out.println(new String(cipher.doFinal(decodeBase64src)));
+    		return new String(cipher.doFinal(decodeBase64src));
+		} catch (Exception e) {
+		    e.printStackTrace();
+		}
+		return null;
+	}
+
+	public static Key makeKey(ByteBuffer key) throws Exception{
+	    try {
+		    return new SecretKeySpec(getByteArray(key), "AES");
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	    return null;
+	}
+
+	public static String getString(ByteBuffer b) {
+
+		return new String(getByteArray(b));
+	}
+
+	public static byte[] getByteArray(ByteBuffer b) {
+		byte[] byteArray = new byte[b.remaining()];
+		b.get(byteArray);
+		return byteArray;
+	}
+
+}
