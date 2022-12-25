@@ -114,9 +114,9 @@ public class EncryptDecrypt {
     private String CMKKeyID;
     
 //     // for DBAPI access by bob 20191126
-//     private final static String DATABASE_ARN = "arn:aws:rds:us-east-2:484626021127:cluster:dbcluster3";
+//     private final static String DATABASE_ARN = "arn:aws:rds:us-east-2:4846******1127:cluster:dbcluster3";
 
-//     private final static String SECRET_STORE_ARN = "arn:aws:secretsmanager:us-east-2:484626021127:secret:dr/stg/admin-KsLQpV"; 
+//     private final static String SECRET_STORE_ARN = "arn:aws:secretsmanager:us-east-2:484******1127:secret:dr/stg/admin-KsLQpV"; 
 
 //     private final static String ENDPOINT = "https://dbcluster3.cluster-c43dtmdrprrh.us-east-2.rds.amazonaws.com";
 // //    private final static String ENDPOINT = "dbcluster3.cluster-c43dtmdrprrh.us-east-2.rds.amazonaws.com";
@@ -132,9 +132,9 @@ public class EncryptDecrypt {
 // 	private String url = "jdbc:mysql://dbcluster3.cluster-c43dtmdrprrh.us-east-2.rds.amazonaws.com:3306/activationDB";
 	private String url = "jdbc:mysql://dbcluster3.cluster-c43dtmdrprrh.us-east-2.rds.amazonaws.com:3306";
 	//MySQL配置时的用户名
-	private String db_username = "admin";
+	private String db_username = "*****";
 	//MySQL配置时的密码
-	private String db_password = "PWadm1n000";
+	private String db_password = "P********";
 	
 	final AwsCrypto encryptionSdk;
     
